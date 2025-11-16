@@ -11,12 +11,15 @@ const options = {
     },
     servers: [
       {
-        url: process.env.BACKEND_URL || 'http://localhost:3000', // URL dinamico dal .env
+        url: process.env.NODE_ENV === 'production' 
+             ? 'https://backend-saponi.onrender.com/api' 
+             : 'http://localhost:3000/api',
       },
     ],
   },
-  apis: ['./routes/*.js'], // punti in cui Swagger cercherà i commenti
+  apis: ['./routes/*.js'],
 };
+
 
 const swaggerSpec = swaggerJsdoc(options);
 
