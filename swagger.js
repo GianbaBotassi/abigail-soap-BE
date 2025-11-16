@@ -11,9 +11,9 @@ const options = {
     },
     servers: [
       {
-        url: process.env.NODE_ENV === 'production' 
-             ? `${process.env.BACKEND_URL}/api`  // Aggiungi /api qui
-             : 'http://localhost:3000/api',
+        url: process.env.NODE_ENV === 'production'
+          ? `${process.env.BACKEND_URL}/api`
+          : 'http://localhost:3000/api',
       },
     ],
   },
