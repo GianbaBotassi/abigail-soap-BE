@@ -9,21 +9,31 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // CORS dinamico
-const allowedOrigins = [
-  process.env.FRONTEND_URL,    // Angular frontend
-  process.env.BACKEND_URL       // Swagger UI o altre richieste dallo stesso server
-];
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+  : [
+    'http://localhost:4200',
+    'http://127.0.0.1:4200',
+    'http://192.168.56.1:4200'
+  ];
 
 const corsOptions = {
-  origin: function(origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+  origin: function (origin, callback) {
+    // Permetti richieste senza origin (come Postman, curl, o stesso server)
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
+      console.log(`❌ CORS blocked for origin: ${origin}`);
+      console.log(`✅ Allowed origins:`, allowedOrigins);
       callback(new Error('CORS non autorizzato'));
     }
   },
-  methods: ['GET','POST','PUT','DELETE','OPTIONS','PATCH','HEAD'],
-  allowedHeaders: ['Content-Type','Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 };
 
@@ -53,4 +63,5 @@ setupSwagger(app);
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`Allowed CORS origins:`, allowedOrigins);
 });
