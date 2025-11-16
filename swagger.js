@@ -12,14 +12,13 @@ const options = {
     servers: [
       {
         url: process.env.NODE_ENV === 'production' 
-             ? process.env.BACKEND_URL
+             ? `${process.env.BACKEND_URL}/api`  // Aggiungi /api qui
              : 'http://localhost:3000/api',
       },
     ],
   },
   apis: ['./routes/*.js'],
 };
-
 
 const swaggerSpec = swaggerJsdoc(options);
 
