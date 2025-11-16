@@ -11,7 +11,7 @@ const options = {
     },
     servers: [
       {
-        url: 'http://localhost:3000', // URL base del tuo server
+        url: process.env.BACKEND_URL || 'http://localhost:3000', // URL dinamico dal .env
       },
     ],
   },
