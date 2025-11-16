@@ -12,7 +12,7 @@ const options = {
     servers: [
       {
         url: process.env.NODE_ENV === 'production' 
-             ? 'https://backend-saponi.onrender.com/api' 
+             ? process.env.BACKEND_URL
              : 'http://localhost:3000/api',
       },
     ],
