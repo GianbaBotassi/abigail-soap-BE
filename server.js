@@ -3,6 +3,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 require('dotenv').config({ path: '.env.development' });
 const setupSwagger = require('./swagger');
+const { authenticateToken } = require('./middleware/auth');
 
 // Creiamo l'app
 const app = express();
@@ -13,6 +14,8 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
   : [
     'http://localhost:4200',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
     'http://127.0.0.1:4200',
     'http://192.168.56.1:4200'
   ];
@@ -47,10 +50,12 @@ app.use(bodyParser.urlencoded({ extended: true }));
 const prodottiRoutes = require('./routes/prodotti');
 const ordiniRoutes = require('./routes/ordini');
 const clientiRoutes = require('./routes/clienti');
+const authRoutes = require('./routes/auth');
 
 app.use('/api/prodotti', prodottiRoutes);
 app.use('/api/ordini', ordiniRoutes);
 app.use('/api/clienti', clientiRoutes);
+app.use('/api/auth', authRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
