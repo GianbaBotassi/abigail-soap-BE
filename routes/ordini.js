@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db/database');
+const { MailService } = require('../mailService.js');
+const mailService = new MailService();
 
 /**
  * @swagger
@@ -172,24 +174,24 @@ router.get('/:id', async (req, res) => {
  */
 router.post('/', async (req, res) => {
   const client = await pool.connect();
-  
+
   try {
     await client.query('BEGIN');
-    
+
     const { email, nome, cognome, cellulare, data_consegna, luogo_consegna, prodotti, cliente_id, note_richieste } = req.body;
-    
+
     if (!email || !nome || !cognome || !cellulare || !data_consegna || !luogo_consegna) {
       return res.status(400).json({ error: 'Tutti i campi sono obbligatori' });
     }
-    
+
     if (!prodotti || !Array.isArray(prodotti) || prodotti.length === 0) {
       return res.status(400).json({ error: 'Devi selezionare almeno un prodotto' });
     }
-    
+
+    // Recupero o creo cliente
     let clienteId = cliente_id;
     if (!clienteId) {
       const clienteExistente = await client.query('SELECT id FROM clienti WHERE email = $1', [email]);
-      
       if (clienteExistente.rows.length > 0) {
         clienteId = clienteExistente.rows[0].id;
       } else {
@@ -201,44 +203,70 @@ router.post('/', async (req, res) => {
         clienteId = nuovoCliente.rows[0].id;
       }
     }
-    
+
+    // Calcolo totale ordine
     let totale = 0;
     for (const item of prodotti) {
-      const prodottoResult = await client.query('SELECT prezzo, disponibile FROM prodotti WHERE id = $1', [item.prodotto_id]);
+      const prodottoResult = await client.query(
+        'SELECT prezzo, disponibile FROM prodotti WHERE id = $1',
+        [item.prodotto_id]
+      );
       if (prodottoResult.rows.length === 0) {
         throw new Error(`Prodotto con ID ${item.prodotto_id} non trovato`);
       }
       if (!prodottoResult.rows[0].disponibile) {
         throw new Error(`Prodotto con ID ${item.prodotto_id} non disponibile`);
       }
-      totale += parseFloat(prodottoResult.rows[0].prezzo) * (parseInt(item.quantita) || 1);
+
+      const quantita = parseInt(item.quantita) || 1;
+
+      // Usa prezzo_totale dal FE se prodotto configurabile, altrimenti prezzo DB
+      const prezzoItem = item.note_configurazione
+        ? parseFloat(item.prezzo_totale || 0)
+        : parseFloat(prodottoResult.rows[0].prezzo) * quantita;
+
+      totale += prezzoItem;
     }
-    
+
+    // Inserimento ordine
     const ordineResult = await client.query(
       `INSERT INTO ordini (cliente_id, email, nome, cognome, cellulare, data_consegna, luogo_consegna, totale, note_richieste)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
       [clienteId, email, nome, cognome, cellulare, data_consegna, luogo_consegna, totale, note_richieste || null]
     );
-    
     const ordine = ordineResult.rows[0];
-    
+
+    // Inserimento prodotti nell'ordine
     for (const item of prodotti) {
       const prodottoResult = await client.query('SELECT prezzo FROM prodotti WHERE id = $1', [item.prodotto_id]);
-      const prezzoUnitario = parseFloat(prodottoResult.rows[0].prezzo);
       const quantita = parseInt(item.quantita) || 1;
+
+      // Prezzo unitario = prezzo_totale / quantita se configurabile
+      const prezzoUnitario = item.note_configurazione
+        ? parseFloat(item.prezzo_totale || 0) / quantita
+        : parseFloat(prodottoResult.rows[0].prezzo);
+
       await client.query(
         `INSERT INTO ordini_prodotti (ordine_id, prodotto_id, quantita, prezzo_unitario, note_configurazione)
          VALUES ($1, $2, $3, $4, $5)`,
         [ordine.id, item.prodotto_id, quantita, prezzoUnitario, item.note_configurazione || null]
       );
     }
-    
+
     await client.query('COMMIT');
-    
+
+    // Recupero ordine completo con prodotti
     const ordineCompletoResult = await pool.query(`
       SELECT 
         o.*,
-        json_agg(
+        json_build_object(
+          'id', c.id,
+          'nome', c.nome,
+          'cognome', c.cognome,
+          'email', c.email,
+          'cellulare', c.cellulare
+        ) AS cliente,
+        COALESCE(json_agg(
           json_build_object(
             'id', op.id,
             'prodotto_id', op.prodotto_id,
@@ -247,15 +275,24 @@ router.post('/', async (req, res) => {
             'prezzo_unitario', op.prezzo_unitario,
             'note_configurazione', op.note_configurazione
           )
-        ) as prodotti
+        ) FILTER (WHERE op.id IS NOT NULL), '[]') AS prodotti
       FROM ordini o
+      LEFT JOIN clienti c ON o.cliente_id = c.id
       LEFT JOIN ordini_prodotti op ON o.id = op.ordine_id
       LEFT JOIN prodotti p ON op.prodotto_id = p.id
       WHERE o.id = $1
-      GROUP BY o.id
+      GROUP BY o.id, c.id
     `, [ordine.id]);
-    
-    res.status(201).json(ordineCompletoResult.rows[0]);
+
+    const ordineCompleto = ordineCompletoResult.rows[0];
+
+    // Invia email al cliente
+    await mailService.sendOrderToCustomer(ordineCompleto);
+
+    // Invia email allo staff
+    await mailService.sendOrderToStaff(ordineCompleto);
+
+    res.status(201).json(ordineCompleto);
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error creating ordine:', error);
@@ -264,6 +301,7 @@ router.post('/', async (req, res) => {
     client.release();
   }
 });
+
 
 /**
  * @swagger

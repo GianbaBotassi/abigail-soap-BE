@@ -4,6 +4,7 @@ const bodyParser = require('body-parser');
 require('dotenv').config({ path: '.env.development' });
 const setupSwagger = require('./swagger');
 const { authenticateToken } = require('./middleware/auth');
+require('./cronJobs');
 
 // Creiamo l'app
 const app = express();
